@@ -2,11 +2,5 @@
   "version": 2,
   "routes": [
     { "src": "/", "dest": "/index.html" }
-  ],
-  "functions": {
-    "api/reddit-sentiment.js": {
-      "maxDuration": 30,
-      "memory": 512
-    }
-  }
+  ]
 }
