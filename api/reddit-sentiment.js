@@ -82,47 +82,34 @@ function extractTopKeywords(posts) {
   return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([word, count]) => ({ word, count }));
 }
 
-const REDDIT_HEADERS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0',
-];
+async function redditFetch(url) {
+  // Try reddit.com first, fall back to oauth.reddit.com (sometimes less rate-limited)
+  const attempts = [
+    { url, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Accept-Language': 'en-US,en;q=0.9', 'Cache-Control': 'no-cache' } },
+    { url: url.replace('www.reddit.com', 'old.reddit.com'), headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0', 'Accept': 'application/json' } },
+  ];
+  let lastErr;
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.url, { headers: attempt.headers });
+      if (res.status === 429) throw new Error('Reddit rate limit hit. Please wait a moment and try again.');
+      if (res.status === 404) throw new Error('Subreddit not found.');
+      if (res.ok) return res.json();
+      lastErr = new Error(`Reddit API error ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+      if (e.message.includes('rate limit') || e.message.includes('not found')) throw e;
+    }
+  }
+  throw lastErr;
+}
 
 async function fetchRedditPosts(query, subreddit, sort, limit, timeframe) {
   const base = subreddit
     ? `https://www.reddit.com/r/${subreddit}/search.json`
     : 'https://www.reddit.com/search.json';
-
-  const params = new URLSearchParams({
-    q: query,
-    sort: sort || 'relevance',
-    limit: Math.min(limit || 25, 100),
-    t: timeframe || 'month',
-    restrict_sr: subreddit ? 'true' : 'false',
-    raw_json: '1'
-  });
-
-  const ua = REDDIT_HEADERS[Math.floor(Math.random() * REDDIT_HEADERS.length)];
-  let res = await fetch(`${base}?${params}`, {
-    headers: { 'User-Agent': ua, 'Accept': 'application/json' }
-  });
-
-  // On 403, retry once without subreddit restriction using global search
-  if (res.status === 403 && subreddit) {
-    const fallbackParams = new URLSearchParams({ q: query, sort: sort || 'relevance', limit: Math.min(limit || 25, 100), t: timeframe || 'month', raw_json: '1' });
-    res = await fetch(`https://www.reddit.com/search.json?${fallbackParams}`, {
-      headers: { 'User-Agent': ua, 'Accept': 'application/json' }
-    });
-  }
-
-  if (!res.ok) {
-    if (res.status === 429) throw new Error('Reddit rate limit hit. Please wait a moment and try again.');
-    if (res.status === 403) throw new Error('Reddit blocked the request. Try a different search term or wait a moment.');
-    if (res.status === 404) throw new Error('Subreddit not found.');
-    throw new Error(`Reddit API error ${res.status}`);
-  }
-
-  return res.json();
+  const params = new URLSearchParams({ q: query, sort: sort || 'relevance', limit: Math.min(limit || 25, 100), t: timeframe || 'month', restrict_sr: subreddit ? 'true' : 'false', raw_json: '1' });
+  return redditFetch(`${base}?${params}`);
 }
 
 async function fetchPostComments(subreddit, postId) {
