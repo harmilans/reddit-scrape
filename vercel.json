@@ -5,17 +5,9 @@
     { "src": "/reddit-sentiment.html", "dest": "/reddit-sentiment.html" }
   ],
   "functions": {
-    "api/analyze.js": {
-      "maxDuration": 30,
-      "memory": 512
-    },
     "api/reddit-sentiment.js": {
       "maxDuration": 30,
       "memory": 512
     }
-  },
-  "env": {
-    "ALLOWED_ORIGIN": "*",
-    "SUPABASE_ANON_KEY": ""
   }
 }
