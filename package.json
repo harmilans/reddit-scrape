@@ -1,0 +1,13 @@
+{
+  "name": "reddit-sentiment-tracker",
+  "version": "2.0.0",
+  "description": "Real-time Reddit brand sentiment analysis — no API key required",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
