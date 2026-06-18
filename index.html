@@ -1159,60 +1159,18 @@ async function runSearch() {
   const subreddit = document.getElementById('subredditInput').value.trim();
   const sort      = document.getElementById('sortSelect').value;
   const timeframe = document.getElementById('timeSelect').value;
-  const limit     = parseInt(document.getElementById('limitSelect').value);
+  const limit     = document.getElementById('limitSelect').value;
 
   show('loading');
   document.getElementById('searchBtn').disabled = true;
 
   try {
-    const base = subreddit
-      ? `https://www.reddit.com/r/${subreddit}/search.json`
-      : 'https://www.reddit.com/search.json';
-    const params = new URLSearchParams({ q: brand, sort, limit: Math.min(limit, 100), t: timeframe, restrict_sr: subreddit ? 'true' : 'false', raw_json: '1' });
-    const res = await fetch(`${base}?${params}`);
-    if (!res.ok) {
-      if (res.status === 429) throw new Error('Reddit rate limit hit. Please wait a moment and try again.');
-      if (res.status === 403) throw new Error('Access denied. This subreddit may be private or quarantined.');
-      if (res.status === 404) throw new Error('Subreddit not found.');
-      throw new Error(`Reddit API error ${res.status}`);
-    }
-    const json = await res.json();
-    const raw = json?.data?.children || [];
-    if (!raw.length) {
-      render({ brand, summary: { totalPosts: 0, avgSentiment: 0, sentimentCounts: {positive:0,negative:0,neutral:0}, sentimentPercent: {positive:0,negative:0,neutral:0}, overallLabel: 'Neutral' }, timeline: [], subredditBreakdown: [], keywords: [], posts: [] });
-      return;
-    }
-
-    const posts = raw.map(({ data: p }) => {
-      const fullText = `${p.title} ${p.selftext||''}`;
-      const sentiment = analyzeSentiment(fullText);
-      return { id: p.id, title: p.title, author: p.author, subreddit: p.subreddit, url: `https://reddit.com${p.permalink}`, score: p.score, numComments: p.num_comments, created: p.created_utc, selftext: (p.selftext||'').slice(0,600), sentiment, comments: [], flair: p.link_flair_text||null, awards: p.total_awards_received||0 };
-    });
-
-    const sentimentCounts = { positive: 0, negative: 0, neutral: 0 };
-    let totalScore = 0;
-    const srStats = {}, timeline = {};
-    for (const post of posts) {
-      sentimentCounts[post.sentiment.label]++;
-      totalScore += post.sentiment.score;
-      const sr = post.subreddit;
-      if (!srStats[sr]) srStats[sr] = { positive:0, negative:0, neutral:0, count:0, totalScore:0 };
-      srStats[sr][post.sentiment.label]++; srStats[sr].count++; srStats[sr].totalScore += post.sentiment.score;
-      const date = new Date(post.created * 1000).toISOString().slice(0,10);
-      if (!timeline[date]) timeline[date] = { positive:0, negative:0, neutral:0, avgScore:0, count:0 };
-      timeline[date][post.sentiment.label]++; timeline[date].avgScore += post.sentiment.score; timeline[date].count++;
-    }
-    for (const d of Object.keys(timeline)) timeline[d].avgScore = parseFloat((timeline[d].avgScore/timeline[d].count).toFixed(2));
-    const avgSentiment = parseFloat((totalScore/posts.length).toFixed(2));
-
-    render({
-      brand,
-      summary: { totalPosts: posts.length, avgSentiment, sentimentCounts, sentimentPercent: { positive: Math.round(sentimentCounts.positive/posts.length*100), negative: Math.round(sentimentCounts.negative/posts.length*100), neutral: Math.round(sentimentCounts.neutral/posts.length*100) }, overallLabel: avgSentiment > 0.3 ? 'Positive' : avgSentiment < -0.3 ? 'Negative' : 'Neutral', topPost: posts.sort((a,b)=>b.score-a.score)[0] },
-      timeline: Object.entries(timeline).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,v])=>({date,...v})),
-      subredditBreakdown: Object.entries(srStats).sort((a,b)=>b[1].count-a[1].count).slice(0,12).map(([name,s])=>({subreddit:name,...s,avgScore:parseFloat((s.totalScore/s.count).toFixed(2))})),
-      keywords: extractKeywords(posts),
-      posts: posts.sort((a,b)=>b.score-a.score)
-    });
+    const params = new URLSearchParams({ brand, sort, timeframe, limit });
+    if (subreddit) params.append('subreddit', subreddit);
+    const res  = await fetch(`/api/reddit-sentiment?${params}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch');
+    render(data);
   } catch (e) {
     show('error');
     document.getElementById('error-text').textContent = e.message;
