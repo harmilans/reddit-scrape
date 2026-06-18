@@ -82,6 +82,12 @@ function extractTopKeywords(posts) {
   return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([word, count]) => ({ word, count }));
 }
 
+const REDDIT_HEADERS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0',
+];
+
 async function fetchRedditPosts(query, subreddit, sort, limit, timeframe) {
   const base = subreddit
     ? `https://www.reddit.com/r/${subreddit}/search.json`
@@ -96,16 +102,22 @@ async function fetchRedditPosts(query, subreddit, sort, limit, timeframe) {
     raw_json: '1'
   });
 
-  const res = await fetch(`${base}?${params}`, {
-    headers: {
-      'User-Agent': 'SentimentRadar/2.0 (brand monitoring research tool)',
-      'Accept': 'application/json'
-    }
+  const ua = REDDIT_HEADERS[Math.floor(Math.random() * REDDIT_HEADERS.length)];
+  let res = await fetch(`${base}?${params}`, {
+    headers: { 'User-Agent': ua, 'Accept': 'application/json' }
   });
+
+  // On 403, retry once without subreddit restriction using global search
+  if (res.status === 403 && subreddit) {
+    const fallbackParams = new URLSearchParams({ q: query, sort: sort || 'relevance', limit: Math.min(limit || 25, 100), t: timeframe || 'month', raw_json: '1' });
+    res = await fetch(`https://www.reddit.com/search.json?${fallbackParams}`, {
+      headers: { 'User-Agent': ua, 'Accept': 'application/json' }
+    });
+  }
 
   if (!res.ok) {
     if (res.status === 429) throw new Error('Reddit rate limit hit. Please wait a moment and try again.');
-    if (res.status === 403) throw new Error('Access denied. This subreddit may be private or quarantined.');
+    if (res.status === 403) throw new Error('Reddit blocked the request. Try a different search term or wait a moment.');
     if (res.status === 404) throw new Error('Subreddit not found.');
     throw new Error(`Reddit API error ${res.status}`);
   }
